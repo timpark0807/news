@@ -16,20 +16,57 @@ var client = new Twitter({
 });
 
 // #1. Subscription Service 
-function getTweets() {
-    var params = {q: '@stocknewsbot subscribe'};
-
+function subscriptionService() {
+    var params = {q: '@stocknewsbot'};
     client.get('search/tweets', params, function(error, tweets, response) {
-        console.log(tweets.statuses[0])
+        if (!error) {
+            var todo = processTweets(tweets);
+            for (let i=todo.length-1; i>=0; i--){
+                var currToDo = todo[i];
+                if (currToDo["action"] == "subscribe") {
+                    processSubscribe(currToDo);
+                } else if (currToDo["action"] == "unsubscribe") {
+                    processUnSubscribe(currToDo);
+                }
+            }
+        }
     });
 };
 
-function addSubscription(body) {
+// Subscription Service Helper Functions 
+function processSubscribe(currToDo) {
+    console.log("Subscribing")
+    console.log(currToDo);
 };
 
-function removeSubscription(body) {
+function processUnSubscribe(currToDo) {
+    console.log("Unsubscribing")
+    console.log(currToDo);
 };
 
+function processMessage(message) {
+    var res = message.toLowerCase().split(" "); 
+    return [res[1], res[2]]; 
+};
+
+function processTweets(tweets) {
+    var mapping = [];
+    for (let i=0; i < tweets.statuses.length; i++) {
+        var currTweet = tweets.statuses[i];
+        var msg = processMessage(currTweet.text);
+        var action = msg[0];
+        var ticker = msg[1]; 
+        if (action !== "subscribe" && action !== "unsubscribe") { continue };
+        var currJSON = {"user": currTweet.user.name, 
+                        "message": currTweet.text, 
+                        "action": action, 
+                        "ticker": ticker, 
+                        "timestamp": currTweet.created_at};
+
+        mapping.push(currJSON);
+    }
+    return mapping;
+}
 
 // #2. News Tweeting Service   
 function sendTweets(){ 
@@ -42,10 +79,14 @@ function sendTweets(){
         if (err) { return console.log(err); }
         var response = res.body
         var article = {"headline":response[0].headline, "url":response[0].url}
+        var intro = "Here's your " + ticker + " article for today! \n"
         console.log(article)
     
-        client.post('statuses/update', {status: article.headline + " " + article.url},  function(error, tweet, response) {
+        client.post('statuses/update', {status: intro + article.headline + " " + article.url},  function(error, tweet, response) {
             if(error) throw error;
           });
       });    
 };
+
+subscriptionService();
+sendTweets();
