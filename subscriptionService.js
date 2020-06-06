@@ -16,73 +16,86 @@ exports.subscriptionService = function () {
 };
 
 // Subscription Service Helper Functions 
-function processSubscribe(tweet) {
-    const ticker = tweet.ticker.toUpperCase();
-    const username = tweet.user;
-    var params = getQueryParams(tweet); 
+function processSubscribe(data, ticker, username) {
 
-    dynamodb.getItem(params, function(error, data) {
-        if (!error) {
-            var currSubscriptions = data.Item.subscriptions.SS;   
+    var currSubscriptions = data.Item.subscriptions.SS;   
 
-            // Verify that subscription does not already exist 
-            if (!currSubscriptions.includes(ticker)){
+    // Verify that subscription does not already exist 
+    if (!currSubscriptions.includes(ticker)){
 
-                // Add New subscription to User's subscriptions 
-                currSubscriptions.push(ticker);
-                var newParams = {
-                    Item: {
-                    "username":{S:username},
-                    "subscriptions":{SS:currSubscriptions},
-                    "updated":{S:"2020-06-04"}
-                        },
-                    TableName: "stocknews-twitter-db"
-                }
-            
-                // Send the request to DynamoDB
-                dynamodb.putItem(newParams, function(err, data) {
-                    if (err) console.log(err, err.stack); // an error occurred
-                    else     console.log(data);           // successful response
-               });
-            }
+        // Add New subscription to User's subscriptions 
+        currSubscriptions.push(ticker);
+        var newParams = {
+            Item: {
+            "username":{S:username},
+            "subscriptions":{SS:currSubscriptions},
+            "updated":{S:"2020-06-04"}
+                },
+            TableName: "stocknews-twitter-db"
         }
-    });
+    
+        // Send the request to DynamoDB
+        dynamodb.putItem(newParams, function(err, data) {
+            if (err) console.log(err, err.stack); // an error occurred
+            else     console.log(data);           // successful response
+        });
+    }
+
 };
 
-function processUnSubscribe(tweet) {
+function processTweet2(tweet) {
+    if (tweet["action"] == "subscribe") {
+        processSubscribe(tweet);
+    } else if (tweet["action"] == "unsubscribe") {
+        processUnSubscribe(tweet);
+    }
+};
+
+function processTweet(tweet) {
     const ticker = tweet.ticker.toUpperCase();
     const username = tweet.user;
     var params = getQueryParams(tweet);
 
     dynamodb.getItem(params, function(error, data) {
         if (!error) {
-            var currSubscriptions = data.Item.subscriptions.SS;
-
-            // Verify ticker we want to unsubscribe is in the current subscriptions 
-            if (currSubscriptions.includes(ticker)) {
-
-                // remove that ticker
-                const index = currSubscriptions.indexOf(ticker);
-                currSubscriptions.splice(index, 1);
-
-                // create new item to PUT
-                var newParams = {
-                    Item: {
-                    "username":{S:username},
-                    "subscriptions":{SS:currSubscriptions},
-                    "updated":{S:"2020-06-04"}
-                        },
-                    TableName: "stocknews-twitter-db"
-                }
-            
-                // Send the request to DynamoDB
-                dynamodb.putItem(newParams, function(err, data) {
-                    if (err) console.log(err, err.stack); // an error occurred
-                    else     console.log(data);           // successful response
-               });
+            console.log(tweet);
+            if (tweet["action"] == "subscribe") {
+                processSubscribe(data, ticker, username);
+            } else if (tweet["action"] == "unsubscribe") {
+                processUnSubscribe(data, ticker, username);
             }
         }
     });
+}
+
+function processUnSubscribe(data, ticker, username) {
+
+    var currSubscriptions = data.Item.subscriptions.SS;
+
+    // Verify ticker we want to unsubscribe is in the current subscriptions 
+    if (currSubscriptions.includes(ticker)) {
+
+        // remove that ticker
+        const index = currSubscriptions.indexOf(ticker);
+        currSubscriptions.splice(index, 1);
+
+        // create new item to PUT
+        var newParams = {
+            Item: {
+            "username":{S:username},
+            "subscriptions":{SS:currSubscriptions},
+            "updated":{S:"2020-06-04"}
+                },
+            TableName: "stocknews-twitter-db"
+        }
+    
+        // Send the request to DynamoDB
+        dynamodb.putItem(newParams, function(err, data) {
+            if (err) console.log(err, err.stack); // an error occurred
+            else     console.log(data);           // successful response
+        });
+    }
+ 
 };
 
 function getQueryParams(tweet) {
@@ -117,13 +130,5 @@ function getTweets(tweets) {
 function getActionAndTicker(message) {
     const res = message.toLowerCase().split(" "); 
     return [res[1], res[2]]; 
-};
-
-function processTweet(tweet) {
-    if (tweet["action"] == "subscribe") {
-        processSubscribe(tweet);
-    } else if (tweet["action"] == "unsubscribe") {
-        processUnSubscribe(tweet);
-    }
 };
 
