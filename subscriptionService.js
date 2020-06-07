@@ -1,8 +1,7 @@
-const client = require("./initTwitterClient.js")
+const client = require("./twitterClient.js")
 const AWS = require("aws-sdk");
 const dynamodb = new AWS.DynamoDB({region:'us-east-1'});
 
-// #1. Subscription Service 
 exports.subscriptionService = function () {
     const params = {q: '@stocknewsbot'};
     client.get('search/tweets', params, function(error, rawTweets, response) {
@@ -15,7 +14,22 @@ exports.subscriptionService = function () {
     });
 };
 
-// Subscription Service Helper Functions 
+function processTweet(tweet) {
+    const ticker = tweet.ticker.toUpperCase();
+    const username = tweet.user;
+    var params = getQueryParams(tweet);
+
+    dynamodb.getItem(params, function(error, data) {
+        if (!error) {
+            if (tweet["action"] == "subscribe") {
+                processSubscribe(data, ticker, username);
+            } else if (tweet["action"] == "unsubscribe") {
+                processUnSubscribe(data, ticker, username);
+            }
+        }
+    });
+}
+
 function processSubscribe(data, ticker, username) {
 
     var currSubscriptions = data.Item.subscriptions.SS;   
@@ -23,7 +37,7 @@ function processSubscribe(data, ticker, username) {
     // Verify that subscription does not already exist 
     if (!currSubscriptions.includes(ticker)){
 
-        // Add New subscription to User's subscriptions 
+        // create updated item to PUT 
         currSubscriptions.push(ticker);
         var newParams = {
             Item: {
@@ -34,7 +48,7 @@ function processSubscribe(data, ticker, username) {
             TableName: "stocknews-twitter-db"
         }
     
-        // Send the request to DynamoDB
+        // Send the PUT request to DynamoDB
         dynamodb.putItem(newParams, function(err, data) {
             if (err) console.log(err, err.stack); // an error occurred
             else     console.log(data);           // successful response
@@ -42,31 +56,6 @@ function processSubscribe(data, ticker, username) {
     }
 
 };
-
-function processTweet2(tweet) {
-    if (tweet["action"] == "subscribe") {
-        processSubscribe(tweet);
-    } else if (tweet["action"] == "unsubscribe") {
-        processUnSubscribe(tweet);
-    }
-};
-
-function processTweet(tweet) {
-    const ticker = tweet.ticker.toUpperCase();
-    const username = tweet.user;
-    var params = getQueryParams(tweet);
-
-    dynamodb.getItem(params, function(error, data) {
-        if (!error) {
-            console.log(tweet);
-            if (tweet["action"] == "subscribe") {
-                processSubscribe(data, ticker, username);
-            } else if (tweet["action"] == "unsubscribe") {
-                processUnSubscribe(data, ticker, username);
-            }
-        }
-    });
-}
 
 function processUnSubscribe(data, ticker, username) {
 
@@ -79,7 +68,7 @@ function processUnSubscribe(data, ticker, username) {
         const index = currSubscriptions.indexOf(ticker);
         currSubscriptions.splice(index, 1);
 
-        // create new item to PUT
+        // create updated item to PUT
         var newParams = {
             Item: {
             "username":{S:username},
@@ -89,7 +78,7 @@ function processUnSubscribe(data, ticker, username) {
             TableName: "stocknews-twitter-db"
         }
     
-        // Send the request to DynamoDB
+        // Send the PUT request to DynamoDB
         dynamodb.putItem(newParams, function(err, data) {
             if (err) console.log(err, err.stack); // an error occurred
             else     console.log(data);           // successful response
@@ -108,12 +97,13 @@ function getQueryParams(tweet) {
 
 function getTweets(tweets) {
     const processedTweets = [];
-    for (let i=0; i < tweets.statuses.length; i++) {
+    tweets.forEach(currTweet => {
         let currTweet = tweets.statuses[i];
         let output = getActionAndTicker(currTweet.text);
         let action = output[0];
         let ticker = output[1]; 
         if (action !== "subscribe" && action !== "unsubscribe") { 
+            // TODO: Place in SQS to reply to tweet. 
             continue 
         } else {
         let processedTweet = {"user": "@" + currTweet.user.name, 
@@ -123,7 +113,7 @@ function getTweets(tweets) {
                               "timestamp": currTweet.created_at}
         processedTweets.push(processedTweet);
         }   
-    }
+    })
     return processedTweets;
 };
 

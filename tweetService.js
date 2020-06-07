@@ -1,4 +1,4 @@
-const client = require("./initTwitterClient.js")
+const client = require("./twitterClient.js")
 const AWS = require("aws-sdk");
 const dynamodb = new AWS.DynamoDB({region:'us-east-1'});
 const sqs = new AWS.SQS({region:'us-east-1'});
@@ -17,15 +17,16 @@ function loadSubscriptions() {
 
 function processItems(items){
     // Iterate over each username 
-    for (let i = 0; i < items.length; i++){
-        var username = items[i].username.S
-        var currSubscriptions = items[i].subscriptions.SS
+
+    items.forEach(item => {
+        var username = item.username.S
+        var currSubscriptions = item.subscriptions.SS
 
         // Iterate over each ticker for that username  
-        for (let j = 0; j < currSubscriptions.length; j++) {
-            loadQueue(username, currSubscriptions[j]);
-        }
-    }
+        currSubscriptions.forEach(currSubscription =>{
+            loadQueue(username, currSubscription);
+        })
+    })
 };
 
 // Load the SQS with the username + ticker to tweet to
@@ -41,33 +42,45 @@ function loadQueue(username, ticker) {
     });
 };
 
-
-// Poll from SQS queue 
-
-function pollQueue(){
-
-}
-
-
-    // Send the tweet 
-function sendTweets(){ 
-    const request = require('request');
-    var ticker = "TSLA";
-    var token = process.env['API_TOKEN']
-    var url = "https://cloud.iexapis.com/stable/stock/" + ticker + "/news?last=1&token=" + token;
-
-    request(url, {json:true}, (err, res, body) => {
-        if (err) { return console.log(err); }
-        var response = res.body
-        var article = {"headline":response[0].headline, "url":response[0].url}
-        var intro = "Here's your " + ticker + " article for today! \n"
-        console.log(article)
-    
-        client.post('statuses/update', {status: intro + article.headline + " " + article.url},  function(error, tweet, response) {
-            if(error) throw error;
-          });
-      });    
+// Lambda function polls from SQS queue 
+// Message details are in the event parameter
+function main(event) {
+    const records = event.Records;
+    records.forEach(record => {
+        processRecord(record.body);
+    })
 };
 
+function processRecord(record) {
+    const res = record.split("_");
+    const username = res[0];
+    const ticker = res[1].slice(1);
+    sendTweet(username, ticker);
+};
+
+// Send the tweet  
+function sendTweet(username, ticker){ 
+    const request = require('request');
+    const token = process.env['API_TOKEN']
+    var url = "https://cloud.iexapis.com/stable/stock/" + ticker + "/news?last=1&token=" + token;
+    console.log(url);
+    request(url, {json:true}, (error, res, body) => {
+        if (!error) {  
+            var response = res.body
+            var article = {"headline":response[0].headline, "url":response[0].url}
+            console.log(article)
+            const status = createMessage(username, ticker, article)
+            client.post('statuses/update', {status: status},  function(error, tweet, response) {
+                if(error) console.log(error);
+        });
+        }
+    });    
+};
+
+function createMessage(username, ticker, article) {
+    var intro = username + " Here's your $" + ticker + " article for today! \n"
+    return intro + article.headline + " " + article.url
+}
 
 loadSubscriptions();
+// main(event);
