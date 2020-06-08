@@ -2,24 +2,60 @@ const client = require("./twitterClient.js")
 const AWS = require("aws-sdk");
 const dynamodb = new AWS.DynamoDB({region:'us-east-1'});
 
+
+//Problems 
+// Subscribe: 
+    // 1. New User needs to be created if they don't exist in the table
+    // 2. Processing multiple subscribes for the same user overwrites previous subscribes 
+
+// Unsubscribe:
+    // 1. User needs to be deleted when subscriptions are empty 
+
 exports.subscriptionService = function () {
     const params = {q: '@stocknewsbot'};
-    client.get('search/tweets', params, function(error, rawTweets, response) {
+    console.log("about to get tweets")
+    client.get('search/tweets', params, (error, rawTweets, response) => {
         if (!error) {
+            console.log("getting tweets")
             const tweets = getTweets(rawTweets);
             for (let i=tweets.length-1; i>=0; i--){
                 processTweet(tweets[i]);
             }
         }
     });
+    console.log("finished getting tweets")
+
+};
+
+function getTweets(tweets) {
+    const processedTweets = [];
+    for (let i=0; i<tweets.statuses.length; i++) {
+        let currTweet = tweets.statuses[i];
+        let output = getActionAndTicker(currTweet.text);
+        let action = output[0];
+        let ticker = output[1]; 
+        if (action !== "subscribe" && action !== "unsubscribe") { 
+            // TODO: Place in SQS to reply to tweet. 
+            continue
+        } else {
+        let processedTweet = {"user": "@" + currTweet.user.name, 
+                              "message": currTweet.text, 
+                              "action": action, 
+                              "ticker": ticker, 
+                              "timestamp": currTweet.created_at}
+        processedTweets.push(processedTweet);
+        }   
+    }
+    return processedTweets;
 };
 
 function processTweet(tweet) {
     const ticker = tweet.ticker.toUpperCase();
     const username = tweet.user;
-    var params = getQueryParams(tweet);
+    const params = getQueryParams(tweet);
 
-    dynamodb.getItem(params, function(error, data) {
+    // processUser(tweet, params)
+    dynamodb.getItem(params, function(error, data) {        
         if (!error) {
             if (tweet["action"] == "subscribe") {
                 processSubscribe(data, ticker, username);
@@ -84,7 +120,11 @@ function processUnSubscribe(data, ticker, username) {
             else     console.log(data);           // successful response
         });
     }
- 
+};
+
+function getActionAndTicker(message) {
+    const res = message.toLowerCase().split(" "); 
+    return [res[1], res[2]]; 
 };
 
 function getQueryParams(tweet) {
@@ -95,30 +135,27 @@ function getQueryParams(tweet) {
     return params; 
 };
 
-function getTweets(tweets) {
-    const processedTweets = [];
-    tweets.forEach(currTweet => {
-        let currTweet = tweets.statuses[i];
-        let output = getActionAndTicker(currTweet.text);
-        let action = output[0];
-        let ticker = output[1]; 
-        if (action !== "subscribe" && action !== "unsubscribe") { 
-            // TODO: Place in SQS to reply to tweet. 
-            continue 
-        } else {
-        let processedTweet = {"user": "@" + currTweet.user.name, 
-                              "message": currTweet.text, 
-                              "action": action, 
-                              "ticker": ticker, 
-                              "timestamp": currTweet.created_at}
-        processedTweets.push(processedTweet);
-        }   
+function getNewUserParams(username) {
+    var params = {
+        Item: {"username": {S:username},
+               "subscriptions": {SS:[""]}},
+        TableName: "stocknews-twitter-db"
+    }
+    return params; 
+};
+
+function helloWorld(){
+    console.log("test");
+}
+function processUser(tweet, params){
+    const username = tweet.user;
+
+    dynamodb.getItem(params, function(error, data) {       
+        console.log("here");
+        const newUserParams = getNewUserParams(username);
+        console.log(newUserParams);
+        dynamodb.putItem(newUserParams, function(error, data) {
+            console.log(data);
+        }) 
     })
-    return processedTweets;
 };
-
-function getActionAndTicker(message) {
-    const res = message.toLowerCase().split(" "); 
-    return [res[1], res[2]]; 
-};
-
