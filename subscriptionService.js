@@ -6,27 +6,22 @@ const dynamodb = new AWS.DynamoDB({region:'us-east-1'});
 // Main Function Handler
 exports.handler = async (events) => {
     const params = {q: '@stocknewsbot'};
-    console.log("a. start");
     const tweets = await promiseGetRawTweets(params);
 
     // Iterate backwards through the tweets to process oldest tweet first
     for (let i=tweets.length-1; i>=0; i--){
-        console.log("2.1 starting process tweet");
         const tweet = tweets[i];
         const ticker = tweet.ticker.toUpperCase();
         const params = getQueryParams(tweet);
+
         let userData = await promiseGetUserData(params);
 
         if (tweet["action"] == "subscribe") {
-            console.log("3.1 start process subsribe")
             await processSubscribe(userData, ticker);
-            console.log("3.2 finish process subsribe")
         } else if (tweet["action"] == "unsubscribe") {
             await processUnSubscribe(userData, ticker);
         }
-        console.log("2.2 finished process tweet");
     };
-    console.log("b. finished");
 }
 
 // Subscribe Functionality 
@@ -52,7 +47,7 @@ async function processSubscribe(data, ticker) {
         // Send the PUT request to DynamoDB
         await promisePutItem(newParams);
     }
-};
+}
 
 // Unsubscribe Functionality
 async function processUnSubscribe(data, ticker) {
@@ -80,7 +75,7 @@ async function processUnSubscribe(data, ticker) {
         // Send the PUT request to DynamoDB
         await promisePutItem(newParams);
     }
-};
+}
 
 
 // Promise Wrappers for Async Functions
@@ -90,9 +85,7 @@ function promiseGetRawTweets(params){
             if (error) {
                 reject(error);
             } else {
-                console.log("1.1 getting raw tweets");
                 const tweets = getTweets(rawTweets);
-                console.log("1.2 finished raw tweets");
                 resolve(tweets);
             }
         });
@@ -117,7 +110,6 @@ function promisePutItem(params){
             if (error) {
                 reject(error);
             } else {
-                console.log("putting in db");
                 resolve(data);
             }
         });
@@ -146,12 +138,12 @@ function getTweets(tweets) {
         }   
     }
     return processedTweets;
-};
+}
 
 function getActionAndTicker(message) {
     const res = message.toLowerCase().split(" "); 
     return [res[1], res[2]]; 
-};
+}
 
 function getQueryParams(tweet) {
     var params = {
@@ -159,4 +151,4 @@ function getQueryParams(tweet) {
         TableName: "stocknews-twitter-db"
     }
     return params; 
-};
+}
