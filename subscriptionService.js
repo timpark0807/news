@@ -3,6 +3,7 @@ const AWS = require("aws-sdk");
 const dynamodb = new AWS.DynamoDB({region:'us-east-1'});
 const sqs = new AWS.SQS({region:'us-east-1'});
 
+
 // Main Function Handler
 exports.handler = async (events) => {
     const rawTweets = await promiseGetRawTweets({ q: '@stocknewsbot' });
@@ -11,6 +12,7 @@ exports.handler = async (events) => {
     // Iterate backwards through the tweets to process oldest tweet first
     for (let i=tweets.length-1; i>=0; i--){
         const tweet = tweets[i];
+        const user = tweet.user
         const ticker = tweet.ticker.toUpperCase();
         const params = getQueryParams(tweet);
 
@@ -19,7 +21,7 @@ exports.handler = async (events) => {
         let userData = await promiseGetUserData(params);
 
         if (tweet["action"] == "subscribe") {
-            await processSubscribe(userData, ticker);
+            await processSubscribe(userData, user, ticker);
         } else if (tweet["action"] == "unsubscribe") {
             await processUnSubscribe(userData, ticker);
         }
@@ -27,9 +29,16 @@ exports.handler = async (events) => {
 }
 
 // Subscribe Functionality 
-async function processSubscribe(data, ticker) {
+async function processSubscribe(data, user, ticker) {
 
-    const [currSubscriptions, username] = parseData(data);
+    // Assume the user does not exist in DynamoDB
+    let currSubscriptions = [""]
+    let username = user 
+
+    // Update these variables if the data does exist
+    if (data.hasOwnProperty("Item")) {
+        [currSubscriptions, username] = parseData(data);
+    }
 
     // Check that we already not already subscribed to the ticker 
     if (!currSubscriptions.includes(ticker)){
@@ -38,13 +47,13 @@ async function processSubscribe(data, ticker) {
         currSubscriptions.push(ticker);
         var newParams = {
             Item: {
-            "username":{S:username},
-            "subscriptions":{SS:currSubscriptions},
-            "updated":{S:"2020-06-04"}
-                },
+                "username": { S: username },
+                "subscriptions": { SS: currSubscriptions },
+                "updated": { S: "2020-06-04" }
+            },
             TableName: "stocknews-twitter-db"
         }
-    
+
         // Send the PUT request to DynamoDB
         await promisePutItem(newParams);
     }
@@ -157,9 +166,7 @@ function getActionAndTicker(message) {
 function getQueryParams(tweet) {
     var params = {
         Key: {
-            "username": {
-                S:tweet.user
-            }
+            "username": { S: tweet.user }
         },
         TableName: "stocknews-twitter-db"
     }
