@@ -1,4 +1,8 @@
 subserv = require('./subscriptionService')
-tweetserv = require('./tweetService') 
+// tweetserv = require('./tweetService') 
+// queueload = require('./queueLoader')
 
-subserv.subscriptionService();
+subserv.handler();
+// queueload.loadSubscriptions();
+// tweetserv.loadSubscriptions();
+

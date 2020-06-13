@@ -15,33 +15,30 @@ exports.handler = async (events) => {
         const user = tweet.user
         const ticker = tweet.ticker.toUpperCase();
         const params = getQueryParams(tweet);
-
-        // ToDo: Check DynamoDB if tweet has already been processed  
-
-        let userData = await promiseGetUserData(params);
+        const userData = await promiseGetUserData(params);
 
         if (tweet["action"] == "subscribe") {
             await processSubscribe(userData, user, ticker);
         } else if (tweet["action"] == "unsubscribe") {
             await processUnSubscribe(userData, ticker);
         }
-    };
+    }
 }
 
 // Subscribe Functionality 
 async function processSubscribe(data, user, ticker) {
 
     // Assume the user does not exist in DynamoDB
-    let currSubscriptions = [""]
-    let username = user 
+    let currSubscriptions = [""];
+    let username = user;
 
-    // Update these variables if the data does exist
+    // Update these variables if the user does exist
     if (data.hasOwnProperty("Item")) {
         [currSubscriptions, username] = parseData(data);
     }
 
-    // Check that we already not already subscribed to the ticker 
-    if (!currSubscriptions.includes(ticker)){
+    // Check that we are not already subscribed to the ticker 
+    if (!currSubscriptions.includes(ticker)) {
 
         // Add item to subscriptions and create a new item to PUT 
         currSubscriptions.push(ticker);
@@ -145,7 +142,11 @@ async function getTweets(tweets) {
         let [action, ticker] = getActionAndTicker(currTweet.text);
 
         if (action !== "subscribe" && action !== "unsubscribe") { 
-            await promiseLoadQueue({QueueUrl: process.env['SQS_FAIL_URL'], MessageBody: currTweet.text});
+            const param = {
+                QueueUrl: process.env['SQS_FAIL_URL'], 
+                MessageBody: "@" + currTweet.user.name + "_" + currTweet.text
+            }
+            await promiseLoadQueue(param);
         } else {
         let processedTweet = {"user": "@" + currTweet.user.name, 
                                 "message": currTweet.text, 

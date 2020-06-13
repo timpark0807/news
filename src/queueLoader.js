@@ -4,6 +4,7 @@ const sqs = new AWS.SQS({region:'us-east-1'});
 
 // Load the SQS queue with tasks. 
 exports.loadSubscriptions = async function () {
+
     // Get all items from the DDB table to load into SQS 
     const userSubscriptionData = await promiseGetSubscriptionData({TableName: "stocknews-twitter-db"}); 
 
@@ -14,19 +15,16 @@ exports.loadSubscriptions = async function () {
         let username = item.username.S
         let currUserSubscriptions = item.subscriptions.SS
 
-        // Iterate over each ticker for that username  
+        // Iterate over each subscription ticker for the current user item  
         for (let j=0; j<currUserSubscriptions.length; j++) {
             let currSubscription = currUserSubscriptions[j];
-            console.log("2.1 start load queue")
             params = {
                 QueueUrl: process.env['SQS_URL'],
                 MessageBody: username + "_" + currSubscription
             }
             await promiseLoadQueue(params);
-            console.log("2.2 end load queue")
         }
     }
-    console.log("b. finish")
 };
 
 function promiseGetSubscriptionData(params){
@@ -36,9 +34,7 @@ function promiseGetSubscriptionData(params){
                 reject(error);
             }
             if (!error){
-                console.log("getting data");
                 resolve(data);
-                console.log("finished getting data");
             }
         });         
     });
@@ -52,7 +48,6 @@ function promiseLoadQueue(params) {
                 reject(error);
             }
             if (!error){
-                console.log("loading queue");
                 resolve(data);
             }
         });         
